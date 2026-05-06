@@ -2,12 +2,12 @@
 
 Chat descentralizado para redes mesh Linux usando [BATMAN-adv](https://www.open-mesh.org/projects/batman-adv/wiki).
 
-- **Sin servidor central** — los mensajes se transmiten por broadcast UDP en la malla
+- **Sin servidor central** — mensajes por broadcast UDP cifrado en la malla
+- **Descubrimiento automático** de peers en la red
 - **Mensajes de texto** con historial SQLite local
 - **Envío de archivos y fotos** cifrados por TCP
 - **Cifrado Fernet** (AES-128-CBC + HMAC-SHA256) con clave derivada de passphrase
 - **TUI con Textual** — interfaz de terminal moderna y responsiva
-- **Cualquiera que descargue la app y esté en la red puede unirse**
 
 ---
 
@@ -32,128 +32,153 @@ Chat descentralizado para redes mesh Linux usando [BATMAN-adv](https://www.open-
 
 ---
 
-## Instalación rápida
+## Instalación y primer uso
 
 ```bash
-git clone https://github.com/pipelol0723/batman-mesh-chat
+git clone https://github.com/Pipelol0723/batman-mesh-chat
 cd batman-mesh-chat
 bash install.sh
 ```
 
 ### Requisitos
 
-- Linux (Ubuntu 20.04+ / Debian 11+ / Arch / cualquier distro con Python 3.10)
+- Linux (Ubuntu 20.04+ / Debian 11+ / cualquier distro con Python 3.10+)
 - Python 3.10 o superior
-- `pip install cryptography textual`
-- BATMAN-adv (opcional para WiFi mesh; funciona también en cualquier LAN local)
+- Tarjeta WiFi con soporte **IBSS/ad-hoc** (verificar con `iw list | grep IBSS`)
+- `batctl` e `iw` (el script los instala automáticamente)
 
 ---
 
-## Uso
+## Uso rápido — un solo comando
+
+```bash
+# Detecta la interfaz WiFi automáticamente
+sudo bash start.sh
+
+# O especifica la interfaz manualmente
+sudo bash start.sh wlan0
+```
+
+Este script hace todo en orden:
+1. Detecta la interfaz WiFi
+2. Configura batman-adv si no está activo
+3. Corrige el broadcast de bat0 si es necesario
+4. Arranca el chat
 
 ### Primer arranque
 
-```bash
-python3 batman_chat.py
-# → Pide nombre de usuario y contraseña de red
-# → La config se guarda en ~/.batman-chat/config.json
-```
+Al ejecutar por primera vez pedirá:
+- **Nombre de usuario** (sin espacios, máx 20 caracteres)
+- **Contraseña de red** (debe ser igual en todos los nodos; default: `batman-mesh`)
 
-### Opciones de línea de comandos
-
-```bash
-python3 batman_chat.py --user pipe            # Establece nombre de usuario
-python3 batman_chat.py --passphrase mi-red    # Cambia la contraseña de red
-python3 batman_chat.py --info                 # Muestra la config actual
-python3 batman_chat.py --reset                # Borra config y reconfigura
-```
-
-### Atajos de teclado en la TUI
-
-| Tecla   | Acción                                       |
-|---------|----------------------------------------------|
-| `Enter` | Enviar mensaje                               |
-| `F2`    | Modo envío de archivo (pide ruta)            |
-| `F5`    | Mostrar peers conectados en el log           |
-| `Ctrl+L`| Limpiar pantalla (historial en DB intacto)   |
-| `Ctrl+Q`| Salir limpiamente                            |
+La config se guarda en `~/.batman-chat/config.json` y no vuelve a pedirse.
 
 ---
 
-## Setup de red mesh con BATMAN-adv
-
-Para usar el chat en una red mesh WiFi real (sin router):
+## Opciones de línea de comandos
 
 ```bash
-# Instalar batman-adv y configurar interfaz mesh
+python3 batman_chat.py --user TuNombre       # establece nombre de usuario
+python3 batman_chat.py --passphrase mi-red   # cambia la contraseña de red
+python3 batman_chat.py --info                # muestra la config actual
+python3 batman_chat.py --reset               # borra config y reconfigura
+```
+
+---
+
+## Atajos de teclado en la TUI
+
+| Tecla    | Acción                                    |
+|----------|-------------------------------------------|
+| `Enter`  | Enviar mensaje                            |
+| `F2`     | Modo envío de archivo (pide ruta)         |
+| `F5`     | Mostrar peers conectados en el log        |
+| `Ctrl+L` | Limpiar pantalla (historial en DB intacto)|
+| `Ctrl+Q` | Salir limpiamente                         |
+
+---
+
+## Setup manual de red mesh con BATMAN-adv
+
+Si prefieres configurar la red manualmente en lugar de usar `start.sh`:
+
+```bash
+# 1. Configurar batman-adv (reemplaza wlan0 con tu interfaz)
 sudo bash scripts/setup_batman.sh wlan0
+
+# 2. Arrancar el chat
+python3 batman_chat.py
 ```
 
-El script:
-1. Instala `batctl`
-2. Carga el módulo `batman-adv` del kernel
-3. Pone `wlan0` en modo ad-hoc con SSID `batman-mesh`
-4. Crea la interfaz `bat0` con IP `10.20.30.X/24`
-
-> **Nota:** Todos los dispositivos deben usar la misma interfaz WiFi,
-> el mismo canal y el mismo SSID de mesh para verse entre sí.
-
-### Verificar peers de la malla
+### Verificar conectividad entre nodos
 
 ```bash
-batctl n          # Neighbors — peers batman directamente visibles
-batctl traceroute <IP>   # Ruta hasta un peer
-batctl s          # Estadísticas
+sudo batctl n          # peers batman-adv visibles
+sudo batctl t          # tabla de enrutamiento completa
+ping <IP_del_peer>     # prueba de conectividad (IPs en 10.20.30.X)
 ```
+
+### Volver a WiFi normal
+
+```bash
+sudo systemctl restart NetworkManager
+```
+
+---
+
+## Conectar múltiples nodos
+
+Todos los nodos deben:
+1. Tener instalado batman-mesh-chat (`git clone` + `bash install.sh`)
+2. Ejecutar `sudo bash start.sh` con su propia interfaz WiFi
+3. Usar la **misma `network_passphrase`** en `~/.batman-chat/config.json`
+4. Estar en **rango físico** de al menos un nodo de la malla
+
+No hay nodo central — cualquier nodo puede entrar o salir sin afectar al resto.
 
 ---
 
 ## Cifrado
 
-| Componente              | Algoritmo / Parámetros                        |
-|-------------------------|-----------------------------------------------|
-| Derivación de clave     | PBKDF2-HMAC-SHA256, 100 000 iteraciones       |
-| Cifrado de mensajes     | Fernet (AES-128-CBC + HMAC-SHA256)            |
-| Cifrado de archivos     | Fernet por chunks de 64 KB                   |
-| Salt                    | Fijo por red (`batman-mesh-salt-v1`)          |
-| Transporte              | UDP broadcast (mensajes) + TCP (archivos)     |
+| Componente          | Algoritmo / Parámetros                    |
+|---------------------|-------------------------------------------|
+| Derivación de clave | PBKDF2-HMAC-SHA256, 100 000 iteraciones   |
+| Cifrado mensajes    | Fernet (AES-128-CBC + HMAC-SHA256)        |
+| Cifrado archivos    | Fernet por chunks de 64 KB               |
+| Salt                | Fijo por red (`batman-mesh-salt-v1`)      |
+| Transporte          | UDP broadcast (mensajes) + TCP (archivos) |
 
-**¿Qué protege?** Cualquier observador pasivo en la red (Wireshark, etc.)
-solo verá bytes cifrados. Sin la passphrase correcta, no puede leer nada.
-
-**¿Qué NO protege?** No hay autenticación de identidad (un peer puede usar
-cualquier nombre). Para redes de alta seguridad, considera añadir
-certificados por usuario.
+Solo los nodos con la misma passphrase pueden leer los mensajes. Un observador con Wireshark solo verá bytes cifrados.
 
 ---
 
 ## Estructura del proyecto
 
 ```
-batman-chat/
-├── batman_chat.py       # Punto de entrada + CLI
+batman-mesh-chat/
+├── batman_chat.py        # Punto de entrada + CLI
+├── start.sh              # Script de inicio todo-en-uno
+├── install.sh            # Instalador de dependencias
 ├── chat/
-│   ├── config.py        # Configuración ~/.batman-chat/config.json
-│   ├── crypto.py        # Cifrado Fernet (PBKDF2 + AES)
-│   ├── db.py            # Historial SQLite (~/.batman-chat/history.db)
-│   ├── network.py       # UDP broadcast / descubrimiento de peers
-│   ├── transfer.py      # Transferencia de archivos por TCP
-│   └── tui.py           # Interfaz Textual (TUI)
+│   ├── config.py         # Config ~/.batman-chat/config.json
+│   ├── crypto.py         # Cifrado Fernet (PBKDF2 + AES)
+│   ├── db.py             # Historial SQLite (~/.batman-chat/history.db)
+│   ├── network.py        # UDP broadcast / descubrimiento de peers
+│   ├── transfer.py       # Transferencia de archivos por TCP
+│   └── tui.py            # Interfaz Textual (TUI)
 ├── scripts/
-│   └── setup_batman.sh  # Configuración de batman-adv
-├── requirements.txt
-├── install.sh
-└── README.md
+│   └── setup_batman.sh   # Configuración de batman-adv
+└── requirements.txt
 ```
 
 ---
 
 ## Historial y privacidad
 
-- El historial se guarda en `~/.batman-chat/history.db` (SQLite)
-- Los archivos recibidos se guardan en `~/batman-chat-files/` (configurable)
-- Para borrar el historial: `rm ~/.batman-chat/history.db`
-- La config está en `~/.batman-chat/config.json`
+- Historial en `~/.batman-chat/history.db` (SQLite local)
+- Archivos recibidos en `~/batman-chat-files/` (configurable)
+- Para borrar historial: `rm ~/.batman-chat/history.db`
+- Para resetear config: `python3 batman_chat.py --reset`
 
 ---
 
