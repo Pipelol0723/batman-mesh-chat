@@ -34,9 +34,6 @@ class _UDPProtocol(asyncio.DatagramProtocol):
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         self.transport = transport
-        sock: socket.socket = transport.get_extra_info("socket")
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
     def datagram_received(self, data: bytes, addr: tuple) -> None:
         ip = addr[0]
@@ -91,11 +88,16 @@ class NetworkManager:
     # ── Ciclo de vida ─────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        loop = asyncio.get_event_loop()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.bind(("", self._port))
+        sock.setblocking(False)
+
+        loop = asyncio.get_running_loop()
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: _UDPProtocol(self._handle_raw),
-            local_addr=("", self._port),
-            allow_broadcast=True,
+            sock=sock,
         )
         self._protocol = protocol
         self._running = True
