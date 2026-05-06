@@ -58,6 +58,12 @@ if ! lsmod | grep -q batman_adv; then
 fi
 info "Módulo batman-adv cargado"
 
+# ── Liberar interfaz de NetworkManager ───────────────────────────────────────
+if command -v nmcli &>/dev/null; then
+    nmcli dev disconnect "$IFACE" 2>/dev/null || true
+    nmcli dev set "$IFACE" managed no 2>/dev/null || true
+fi
+
 # ── Configurar interfaz en modo ad-hoc ───────────────────────────────────────
 ip link set "$IFACE" down
 iw dev "$IFACE" set type ibss
