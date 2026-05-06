@@ -40,10 +40,15 @@ echo "  IP local : $MESH_IP/24"
 echo ""
 
 # ── Dependencias ─────────────────────────────────────────────────────────────
-if ! command -v batctl &>/dev/null; then
-    info "Instalando batctl..."
+PKGS=()
+command -v batctl &>/dev/null || PKGS+=(batctl)
+command -v iw     &>/dev/null || PKGS+=(iw)
+command -v iwconfig &>/dev/null || PKGS+=(wireless-tools)
+
+if [[ ${#PKGS[@]} -gt 0 ]]; then
+    info "Instalando: ${PKGS[*]}..."
     apt-get update -qq
-    apt-get install -y batctl iw wireless-tools --no-install-recommends
+    apt-get install -y "${PKGS[@]}" --no-install-recommends
 fi
 info "batctl $(batctl -v 2>&1 | head -1)"
 
