@@ -15,11 +15,28 @@ Tipos de mensaje (campo "type"):
 """
 
 import asyncio
+import fcntl
 import json
 import socket
+import struct
 from typing import Callable, Dict, Optional
 
 from .crypto import Crypto
+
+
+def _detect_broadcast_addr() -> str:
+    """Broadcast address of bat0 if available, else 255.255.255.255."""
+    try:
+        SIOCGIFBRDADDR = 0x8919
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            ifreq = struct.pack('16sH14s', b'bat0', 0, b'\x00' * 14)
+            res = fcntl.ioctl(s.fileno(), SIOCGIFBRDADDR, ifreq)
+        brd = socket.inet_ntoa(struct.unpack('16sH2x4s8x', res)[2])
+        if brd not in ('0.0.0.0', ''):
+            return brd
+    except Exception:
+        pass
+    return '255.255.255.255'
 
 
 # ── Protocolo UDP ────────────────────────────────────────────────────────────
@@ -82,12 +99,14 @@ class NetworkManager:
 
         self._peers: Dict[str, str] = {}  # ip → username
         self._protocol: Optional[_UDPProtocol] = None
+        self._broadcast = '255.255.255.255'
         self._running = False
         self._tasks: list = []
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────
 
     async def start(self) -> None:
+        self._broadcast = _detect_broadcast_addr()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -199,7 +218,7 @@ class NetworkManager:
         if not self._protocol:
             return
         data = self._crypto.encrypt(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
-        self._protocol.send(data, ("255.255.255.255", self._port))
+        self._protocol.send(data, (self._broadcast, self._port))
 
     async def _heartbeat_loop(self) -> None:
         while self._running:

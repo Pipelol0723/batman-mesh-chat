@@ -78,8 +78,8 @@ info "batman-adv activo en $BAT_IFACE"
 
 # ── Asignar IP ───────────────────────────────────────────────────────────────
 ip addr flush dev "$BAT_IFACE" 2>/dev/null || true
-ip addr add "${MESH_IP}/24" dev "$BAT_IFACE"
-info "IP asignada: $MESH_IP/24 en $BAT_IFACE"
+ip addr add "${MESH_IP}/24" broadcast "${IP_PREFIX}.255" dev "$BAT_IFACE"
+info "IP asignada: $MESH_IP/24 (broadcast ${IP_PREFIX}.255) en $BAT_IFACE"
 
 # ── Verificación ─────────────────────────────────────────────────────────────
 echo ""
