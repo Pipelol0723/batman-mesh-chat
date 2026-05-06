@@ -83,7 +83,7 @@ class NetworkManager:
                        con firma:  async def cb(msg: dict) -> None
     """
 
-    HEARTBEAT_INTERVAL = 30  # segundos
+    HEARTBEAT_INTERVAL = 10  # segundos
 
     def __init__(
         self,
@@ -217,13 +217,19 @@ class NetworkManager:
     async def _send_raw(self, msg: dict) -> None:
         if not self._protocol:
             return
-        data = self._crypto.encrypt(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
-        self._protocol.send(data, (self._broadcast, self._port))
+        try:
+            data = self._crypto.encrypt(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
+            self._protocol.send(data, (self._broadcast, self._port))
+        except OSError:
+            pass  # error transitorio de red, ignorar
 
     async def _heartbeat_loop(self) -> None:
         while self._running:
             await asyncio.sleep(self.HEARTBEAT_INTERVAL)
-            await self._send_raw({"type": "HEARTBEAT", "sender": self._username})
+            try:
+                await self._send_raw({"type": "HEARTBEAT", "sender": self._username})
+            except Exception:
+                pass  # mantener el loop vivo ante cualquier error
 
     # ── Consultas ─────────────────────────────────────────────────────────
 
